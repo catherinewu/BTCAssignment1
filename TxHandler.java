@@ -28,31 +28,36 @@ public class TxHandler {
 		byte[] hash = tx.getHash();
 
 		UTXOPool currPool = new UTXOPool();
-		
+        
+            
 		ArrayList<Transaction.Output> outputArray = tx.getOutputs();
-		for (Transaction.Output out : outputArray) {
+        for (Transaction.Output out : outputArray) {
 			UTXO current = new UTXO(hash, index);
-
+            
+            //TODO: Fix this 
+            /*
 			// Checks condition (1): all outputs claimed by tx are in the current UTXO pool
 			if (!pool.contains(current))
 				return false;			
-
+            
+            
 			// Checks condition (3): no UTXO is claimed multiple times by tx, 
 			if (currPool.contains(current)) 
 				return false;
-
+            */
 			// Checks condition (4): all the txns outputs are non-negative
 			if (out.value < 0) {
 				return false;
 			}
 			outSum += out.value;
 
-			currPool.addUTXO(current, out);
+			//currPool.addUTXO(current, out);
 			index++;
 		}
 
 		// sum the inputs
 		ArrayList<Transaction.Input> inputArray = tx.getInputs();
+        index = 0;
 		for (Transaction.Input in : inputArray) {
 			
 			// sum inputs
@@ -62,11 +67,21 @@ public class TxHandler {
             if (found == null)
                 return false;
 
+            if (found.value < 0)
+                return false;
+
 			inSum += found.value;
+
+            /*
 
 			// Checks condition (2): the signatures on each input of tx are valid
 			//get the message and the signature and then verify it
-			byte[] msg = tx.getRawDataToSign(in.outputIndex);
+            
+            // TODO: this is a stopgap for figuring out why
+            // we keep getting out of bounds errors
+            //if (in.outputIndex > inputArray.size())
+            //    return false;
+			byte[] msg = tx.getRawDataToSign(index);
 
             if (msg == null)
                 return false;
@@ -75,13 +90,17 @@ public class TxHandler {
 			if (!found.address.verifySignature(msg, sig)) {
 				return false;
 			}
+            
+            index++;
 
+            */
 		}
 
 		// Checks condition (5): the sum of tx’s input values is 
 		// greater than or equal to the sum of its output values
-		if (outSum < inSum) 
+		if (! (inSum >= outSum)) 
 			return false;
+
 		return true;
 	}
 
