@@ -62,7 +62,7 @@ public class TxHandler {
 			// Checks condition (2): the signatures on each input of tx are valid
 			//get the message and the signature and then verify it
 			byte[] rawData = tx.getRawDataToSign(in.outputIndex);
-			if (!RSAkey.verifySignature(rawData, in.signature)) {
+			if (!found.address.verifySignature(rawData, in.signature)) {
 				return false;
 			}
 
