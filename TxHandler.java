@@ -1,5 +1,4 @@
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.*;
 
 public class TxHandler {
 	public UTXOPool pool;
@@ -94,8 +93,6 @@ public class TxHandler {
 
 		ArrayList<Transaction.Output> outputArray = tx.getOutputs();
         for (Transaction.Output out : outputArray) {
-			UTXO current = new UTXO(hash, index);
-            
 			// Checks condition (4): all the txns outputs are non-negative
 			if (out.value < 0) {
 				return false;
@@ -155,10 +152,11 @@ public class TxHandler {
 			acceptedTx.add(tx);
 		}
 
+
 		// while one thing has been added to acceptedTx in last round
 		while (count >= 0) {
+            count = 0;
 			for (Transaction tx: toCheckAgain) {
-				count = 0;
 				if(!handle.isValidTx(tx)) {
 					continue;
 				}
@@ -176,5 +174,94 @@ public class TxHandler {
 
 		return acceptedArr;
 	}
+
+    public static class TxHandlerUtil {
+        public static HashMap<UTXO, HashSet<Transaction>> constructUTXOMapping(Transaction[] txs, UTXOPool pool) {
+
+            for (Transaction tx : txs) {
+
+            }
+
+        }
+
+
+        public static HashSet<HashSet<Transaction>> calculateMaximalSets(Transaction[] txs) {
+            HashMap<Transaction, HashSet<Transaction>> conflicts = findConflicts(txs);
+            return getMaximalDisjointSets(conflicts);
+        }
+
+        // use the Bron-Kerbosch algorithm (http://en.wikipedia.org/wiki/Bron%E2%80%93Kerbosch_algorithm)
+        // to find all the maximal independent sets
+        public static void bronKerbosch(Set<Transaction> taken, Set<Transaction> remaining, Set<Transaction> excluded,
+                                        Set<HashSet<Transaction>> ret, Map<Transaction, HashSet<Transaction>> neighbors) {
+            if (remaining.isEmpty() && excluded.isEmpty()) {
+                ret.add(new HashSet<Transaction>(taken));
+                return;
+            }
+
+            Set<Transaction> r = new HashSet<Transaction>(taken);
+            Set<Transaction> p = new HashSet<Transaction>(remaining);
+            Set<Transaction> x = new HashSet<Transaction>(excluded);
+
+            for (Transaction v : remaining) {
+                Set<Transaction> n = neighbors.get(v);
+
+                // R union {v}
+                Set<Transaction> rNew = new HashSet<Transaction>(r);
+                rNew.add(v);
+
+                // P intersect neigbors(v)
+                Set<Transaction> pNew = new HashSet<Transaction>(p);
+                p.retainAll(n);
+
+                // X intersect neighbors(v)
+                Set<Transaction> xNew = new HashSet<Transaction>(x);
+                x.retainAll(n);
+
+                bronKerbosch(rNew, pNew, xNew, ret, neighbors);
+
+                p.remove(v);
+                x.remove(v);
+            }
+        }
+
+        // calculate the maximal disjoint sets using the Bron-Kerbosch algorithm
+        public static HashSet<HashSet<Transaction>> getMaximalDisjointSets(HashMap<Transaction, HashSet<Transaction>> conflicts) {
+            Set<Transaction> vertices = conflicts.keySet();
+
+            HashSet<HashSet<Transaction>> ret = new HashSet<HashSet<Transaction>>();
+            bronKerbosch(new HashSet<Transaction>(), vertices, new HashSet<Transaction>(), ret, conflicts);
+
+            return ret;
+        }
+
+        // construct the conflict graph
+        public static HashMap<Transaction, HashSet<Transaction>> findConflicts(Transaction[] txs) {
+            HashMap<Transaction.Input, HashSet<Transaction>> consumes = new HashMap<Transaction.Input, HashSet<Transaction>>();
+            for (Transaction tx : txs) {
+                for (Transaction.Input input : tx.getInputs()) {
+                    if (!consumes.containsKey(input)) consumes.put(input, new HashSet<Transaction>());
+                    consumes.get(input).add(tx);
+                }
+            }
+
+            HashMap<Transaction, HashSet<Transaction>> conflicts = new HashMap<Transaction, HashSet<Transaction>>();
+            for (HashSet<Transaction> conflicting : consumes.values()) {
+                if (conflicting.size() > 1) {
+                    for (Transaction tx1 : conflicting) {
+                        for (Transaction tx2 : conflicting) {
+                            if (!tx1.equals(tx2)) {
+                                // tx1 conflicts with tx2
+                                if (!conflicts.containsKey(tx1)) conflicts.put(tx1, new HashSet<Transaction>());
+                                conflicts.get(tx1).add(tx2);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return conflicts;
+        }
+    }
 
 } 
