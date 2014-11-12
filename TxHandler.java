@@ -1,13 +1,13 @@
-import java.util.ArrayList; 
+import java.util.ArrayList;
 
 public class TxHandler {
-
+	public UTXOPool pool;
 	/* Creates a public ledger whose current UTXOPool (collection of unspent 
 	 * transaction outputs) is utxoPool. This should make a defensive copy of 
 	 * utxoPool by using the UTXOPool(UTXOPool uPool) constructor.
 	 */
 	public TxHandler(UTXOPool utxoPool) {
-		UTXOPool pool = UTXOPool(utxoPool);
+		pool = new UTXOPool(utxoPool);
 	}
 
 	/* Returns true if 
@@ -26,15 +26,14 @@ public class TxHandler {
 		int index = 0;
 		byte[] hash = tx.getHash();
 
-
 		UTXOPool currPool = new UTXOPool();
 		
-		ArrayList<Output> outputArray = tx.getOutputs();
-		for (Output out : outputArray) {
+		ArrayList<Transaction.Output> outputArray = tx.getOutputs();
+		for (Transaction.Output out : outputArray) {
 			UTXO current = new UTXO(hash, index);
 
 			// Checks condition (1): all outputs claimed by tx are in the current UTXO pool
-			if (!pool.contains(out))
+			if (!pool.contains(current))
 				return false;			
 
 			// Checks condition (3): no UTXO is claimed multiple times by tx, 
@@ -47,24 +46,23 @@ public class TxHandler {
 			}
 			outSum += out.value;
 
-			currPool.addUTXO(hash, outputArray);
+			currPool.addUTXO(current, out);
 			index++;
 		}
 
 		// sum the inputs
-		ArrayList<Input> inputArray = tx.getInputs();
-		for (Input in : inputArray) {
-			ArrayList<Output> prevOut = 
-			// get prev transaction in the pool
-			// get the index of the output
+		ArrayList<Transaction.Input> inputArray = tx.getInputs();
+		for (Transaction.Input in : inputArray) {
 			
-			// add that to the inSum
-			inSum += in.value;
+			// sum inputs
+			UTXO toFind = new UTXO(in.prevTxHash, in.outputIndex);
+			Transaction.Output found = pool.getTxOutput(toFind);
+			inSum += found.value;
 
 			// Checks condition (2): the signatures on each input of tx are valid
 			//get the message and the signature and then verify it
-			byte[] sig = tx.getRawDataToSign(in.outputIndex);
-			if (sig != in.signature) {
+			byte[] rawData = tx.getRawDataToSign(in.outputIndex);
+			if (!RSAkey.verifySignature(rawData, in.signature)) {
 				return false;
 			}
 
@@ -83,17 +81,40 @@ public class TxHandler {
 	 * and updating the current UTXO pool as appropriate.
 	 */
 	public Transaction[] handleTxs(Transaction[] possibleTxs) {
+		TxHandler handle = new TxHandler(pool);
 		ArrayList<Transaction> acceptedTx = new ArrayList<Transaction>();
 		for (Transaction tx : possibleTxs) {
-			if (!pool.isValidTx(tx)) {
+			byte[] hash = tx.getHash();
+
+			// check is transaction is valid
+			if (!handle.isValidTx(tx)) {
 				continue;
 			}
-			//remove all inputs
-			//add all outputs
+
+			// remove all inputs
+			ArrayList<Transaction.Input> inputArray = tx.getInputs();
+			for (Transaction.Input in : inputArray) {
+				UTXO toRemove = new UTXO(in.prevTxHash, in.outputIndex);
+				pool.removeUTXO(toRemove);
+			}
+
+			// add all inputs
+			ArrayList<Transaction.Output> outputArray = tx.getOutputs();
+			int i = 0;
+			for (Transaction.Output out : outputArray) {
+				UTXO toAdd = new UTXO(hash, i);
+				pool.removeUTXO(toAdd);
+				i++;
+			}
+
 			acceptedTx.add(tx);
 		}
 
-		return acceptedTx.toArray();
+		// change to array
+		Transaction[] acceptedArr = new Transaction[acceptedTx.size()];
+		acceptedArr = acceptedTx.toArray(acceptedArr);
+
+		return acceptedArr;
 	}
 
 } 
