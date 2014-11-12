@@ -27,8 +27,9 @@ public class TxHandler {
 		int index = 0;
 		byte[] hash = tx.getHash();
 
-		UTXOPool currPool = new UTXOPool();
-        
+		//UTXOPool currPool = new UTXOPool();
+        ArrayList<UTXO> usedUTXO = new ArrayList<UTXO>();
+
         /* Check the inputs to the transaction for validity */
 		ArrayList<Transaction.Input> inputArray = tx.getInputs();
 		for (Transaction.Input in : inputArray) {
@@ -38,10 +39,15 @@ public class TxHandler {
 			// Checks condition (1): all outputs claimed by tx are in the current UTXO pool
 			if (!pool.contains(current))
 				return false;			
-            
+           
+            if (usedUTXO.contains(current))
+                return false;
+
+            usedUTXO.add(current);
+
+			//currPool.addUTXO(current, out);
 			// sum inputs
-			UTXO toFind = new UTXO(in.prevTxHash, in.outputIndex);
-			Transaction.Output found = pool.getTxOutput(toFind);
+			Transaction.Output found = pool.getTxOutput(current);
             
             if (found == null)
                 return false;
@@ -97,7 +103,7 @@ public class TxHandler {
 			}
 			outSum += out.value;
 
-			currPool.addUTXO(current, out);
+			//currPool.addUTXO(current, out);
 			index++;
 		}
 
