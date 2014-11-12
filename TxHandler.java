@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class TxHandler {
 	public UTXOPool pool;
@@ -57,12 +58,21 @@ public class TxHandler {
 			// sum inputs
 			UTXO toFind = new UTXO(in.prevTxHash, in.outputIndex);
 			Transaction.Output found = pool.getTxOutput(toFind);
+            
+            if (found == null)
+                return false;
+
 			inSum += found.value;
 
 			// Checks condition (2): the signatures on each input of tx are valid
 			//get the message and the signature and then verify it
-			byte[] rawData = tx.getRawDataToSign(in.outputIndex);
-			if (!found.address.verifySignature(rawData, in.signature)) {
+			byte[] msg = tx.getRawDataToSign(in.outputIndex);
+
+            if (msg == null)
+                return false;
+
+            byte[] sig = in.signature;
+			if (!found.address.verifySignature(msg, sig)) {
 				return false;
 			}
 
