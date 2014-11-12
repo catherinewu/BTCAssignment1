@@ -10,6 +10,89 @@ public class TxHandler {
 		pool = new UTXOPool(utxoPool);
 	}
 
+    	/* Returns true if
+	 * (1) all outputs claimed by tx are in the current UTXO pool,
+	 * (2) the signatures on each input of tx are valid,
+	 * (3) no UTXO is claimed multiple times by tx,
+	 * (4) all of tx’s output values are non-negative, and
+	 * (5) the sum of tx’s input values is greater than or equal to the sum of
+	        its output values;
+	   and false otherwise.
+	 */
+
+    public boolean isValidTx(Transaction tx) {
+        boolean hasValidInputs = hasValidInputs(tx);
+        boolean hasValidOutputs = hasValidOutputs(tx);
+
+        double fee = calculateFee(tx);
+        boolean hasValidFee = fee >= 0;
+
+        return hasValidInputs && hasValidOutputs && hasValidFee;
+    }
+
+    /* returns true iff
+     * (1) claimed outputs are in UTXO pool
+     * (2) signatures on each input is valid
+     * (3) claimed outputs are unique
+     */
+    private boolean hasValidInputs(Transaction tx) {
+        UTXOPool consumed = new UTXOPool();
+
+        for (int i = 0; i < tx.numInputs(); i++) {
+            Transaction.Input input = tx.getInput(i);
+
+            // test claimed outputs exist and are unique
+            UTXO utxo = new UTXO(input.prevTxHash, input.outputIndex);
+            if (!this.utxoPool.contains(utxo) || consumed.contains(utxo)) {
+                return false;
+            }
+            consumed.addUTXO(utxo, null);
+
+            // test signature validity on this input
+            byte[] msg = tx.getRawDataToSign(i);
+            byte[] sig = input.signature;
+            if (!this.utxoPool.getTxOutput(utxo).address.verifySignature(msg, sig)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /* returns true iff (4) all output values are non-negative
+     */
+    private boolean hasValidOutputs(Transaction tx) {
+        for (Transaction.Output output : tx.getOutputs()) {
+            if (output.value < 0) return false;
+        }
+        return true;
+    }
+
+    private double calculateFee(Transaction tx) {
+        double in = 0;
+        for (Transaction.Input input : tx.getInputs()) {
+            UTXO utxo = new UTXO(input.prevTxHash, input.outputIndex);
+            in = in + this.utxoPool.getTxOutput(utxo).value;
+        }
+
+        double out = 0;
+        for (Transaction.Output output : tx.getOutputs()) {
+            out = out + output.value;
+        }
+
+        return out - in;
+    }
+
+    private double calculateTotalFees(Set<Transaction> txs) {
+        double total = 0;
+
+        for (Transaction tx : txs) {
+            total += calculateFee(tx);
+        }
+
+        return total;
+    }
+
 	/* Returns true if 
 	 * (1) all outputs claimed by tx are in the current UTXO pool, 
 	 * (2) the signatures on each input of tx are valid, 
@@ -176,12 +259,45 @@ public class TxHandler {
 	}
 
     public static class TxHandlerUtil {
-        public static HashMap<UTXO, HashSet<Transaction>> constructUTXOMapping(Transaction[] txs, UTXOPool pool) {
+        public static HashMap<UTXO, Transaction> constructUTXOMapping(Transaction[] txs, UTXOPool pool) {
+            HashMap<UTXO, Transaction> map = new HashMap<UTXO, Transaction>();
 
-            for (Transaction tx : txs) {
-
+            for (UTXO utxo : pool.getAllUTXO()) {
+                map.put(utxo, null);
             }
 
+            for (Transaction tx : txs) {
+                for (int i = 0; i < tx.getOutputs().size(); i++) {
+                    UTXO utxo = new UTXO(tx.getHash(), i);
+                    map.put(utxo, tx);
+                }
+            }
+
+            return map;
+        }
+
+        public static HashMap<Transaction, HashSet<Transaction>> constructTxDependencies(Transaction[] txs, UTXOPool pool) {
+            HashMap<UTXO, Transaction> txForUtxo = constructUTXOMapping(txs, pool);
+            HashMap<Transaction, HashSet<Transaction>> dep = new HashMap<Transaction, HashSet<Transaction>>();
+
+            for (Transaction tx : txs) {
+                if (!dep.containsKey(tx)) {
+                    dep.put(tx, new HashSet<Transaction>());
+                }
+
+                for (Transaction.Input input : tx.getInputs()) {
+                    UTXO utxo = new UTXO(input.prevTxHash, input.outputIndex);
+                    // this is an invalid tx because it consumes a utxo that doesn't exist
+                    if (!txForUtxo.containsKey(utxo)) {
+                        dep.remove(tx);
+                        break;
+                    }
+
+                    dep.get(tx).add(txForUtxo.get(utxo));
+                }
+            }
+
+            return dep;
         }
 
 
