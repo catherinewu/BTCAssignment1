@@ -75,6 +75,26 @@ public class TxHandler {
 		return true;
 	}
 
+	private void updateUTXO(Transaction tx) {
+		byte[] hash = tx.getHash();
+
+		// remove all inputs
+		ArrayList<Transaction.Input> inputArray = tx.getInputs();
+		for (Transaction.Input in : inputArray) {
+			UTXO toRemove = new UTXO(in.prevTxHash, in.outputIndex);
+			pool.removeUTXO(toRemove);
+		}
+
+		// add all outputs
+		ArrayList<Transaction.Output> outputArray = tx.getOutputs();
+		int i = 0;
+		for (Transaction.Output out : outputArray) {
+			UTXO toAdd = new UTXO(hash, i);
+			pool.removeUTXO(toAdd);
+			i++;
+		}	
+	}
+
 	/* Handles each epoch by receiving an unordered array of proposed 
 	 * transactions, checking each transaction for correctness, 
 	 * returning a mutually valid array of accepted transactions, 
@@ -83,32 +103,34 @@ public class TxHandler {
 	public Transaction[] handleTxs(Transaction[] possibleTxs) {
 		TxHandler handle = new TxHandler(pool);
 		ArrayList<Transaction> acceptedTx = new ArrayList<Transaction>();
+		ArrayList<Transaction> toCheckAgain = new ArrayList<Transaction>();
+		int count = 1;
 		for (Transaction tx : possibleTxs) {
-			byte[] hash = tx.getHash();
 
 			// check is transaction is valid
 			if (!handle.isValidTx(tx)) {
+				toCheckAgain.add(tx);
 				continue;
 			}
 
-			// remove all inputs
-			ArrayList<Transaction.Input> inputArray = tx.getInputs();
-			for (Transaction.Input in : inputArray) {
-				UTXO toRemove = new UTXO(in.prevTxHash, in.outputIndex);
-				pool.removeUTXO(toRemove);
-			}
-
-			// add all inputs
-			ArrayList<Transaction.Output> outputArray = tx.getOutputs();
-			int i = 0;
-			for (Transaction.Output out : outputArray) {
-				UTXO toAdd = new UTXO(hash, i);
-				pool.removeUTXO(toAdd);
-				i++;
-			}
-
+			updateUTXO(tx);
 			acceptedTx.add(tx);
 		}
+
+		// while one thing has been added to acceptedTx in last round
+		while (count >= 0) {
+			for (Transaction tx: toCheckAgain) {
+				count = 0;
+				if(!handle.isValidTx(tx)) {
+					continue;
+				}
+				count++;
+				updateUTXO(tx);
+				acceptedTx.add(tx);
+				toCheckAgain.remove(tx);
+			}
+		}
+
 
 		// change to array
 		Transaction[] acceptedArr = new Transaction[acceptedTx.size()];
