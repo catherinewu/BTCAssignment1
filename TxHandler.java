@@ -29,37 +29,16 @@ public class TxHandler {
 
 		UTXOPool currPool = new UTXOPool();
         
-            
-		ArrayList<Transaction.Output> outputArray = tx.getOutputs();
-        for (Transaction.Output out : outputArray) {
-			UTXO current = new UTXO(hash, index);
-            
-            //TODO: Fix this 
-            /*
+        /* Check the inputs to the transaction for validity */
+		ArrayList<Transaction.Input> inputArray = tx.getInputs();
+		for (Transaction.Input in : inputArray) {
+
+			UTXO current = new UTXO(in.prevTxHash, in.outputIndex);
+
 			// Checks condition (1): all outputs claimed by tx are in the current UTXO pool
 			if (!pool.contains(current))
 				return false;			
             
-            
-			// Checks condition (3): no UTXO is claimed multiple times by tx, 
-			if (currPool.contains(current)) 
-				return false;
-            */
-			// Checks condition (4): all the txns outputs are non-negative
-			if (out.value < 0) {
-				return false;
-			}
-			outSum += out.value;
-
-			//currPool.addUTXO(current, out);
-			index++;
-		}
-
-		// sum the inputs
-		ArrayList<Transaction.Input> inputArray = tx.getInputs();
-        index = 0;
-		for (Transaction.Input in : inputArray) {
-			
 			// sum inputs
 			UTXO toFind = new UTXO(in.prevTxHash, in.outputIndex);
 			Transaction.Output found = pool.getTxOutput(toFind);
@@ -71,7 +50,7 @@ public class TxHandler {
                 return false;
 
 			inSum += found.value;
-
+            index++;
             /*
 
 			// Checks condition (2): the signatures on each input of tx are valid
@@ -95,6 +74,33 @@ public class TxHandler {
 
             */
 		}
+
+		ArrayList<Transaction.Output> outputArray = tx.getOutputs();
+        for (Transaction.Output out : outputArray) {
+			UTXO current = new UTXO(hash, index);
+            
+            /* 
+            //TODO: Fix this  
+			// Checks condition (1): all outputs claimed by tx are in the current UTXO pool
+			if (!pool.contains(current))
+				return false;			
+            
+            
+			// Checks condition (3): no UTXO is claimed multiple times by tx, 
+			if (currPool.contains(current)) 
+				return false;
+            */
+
+			// Checks condition (4): all the txns outputs are non-negative
+			if (out.value < 0) {
+				return false;
+			}
+			outSum += out.value;
+
+			currPool.addUTXO(current, out);
+			index++;
+		}
+
 
 		// Checks condition (5): the sum of tx’s input values is 
 		// greater than or equal to the sum of its output values
