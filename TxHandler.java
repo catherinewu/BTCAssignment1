@@ -43,7 +43,7 @@ public class TxHandler {
 
             // test claimed outputs exist and are unique
             UTXO utxo = new UTXO(input.prevTxHash, input.outputIndex);
-            if (!this.utxoPool.contains(utxo) || consumed.contains(utxo)) {
+            if (!pool.contains(utxo) || consumed.contains(utxo)) {
                 return false;
             }
             consumed.addUTXO(utxo, null);
@@ -51,7 +51,7 @@ public class TxHandler {
             // test signature validity on this input
             byte[] msg = tx.getRawDataToSign(i);
             byte[] sig = input.signature;
-            if (!this.utxoPool.getTxOutput(utxo).address.verifySignature(msg, sig)) {
+            if (!pool.getTxOutput(utxo).address.verifySignature(msg, sig)) {
                 return false;
             }
         }
@@ -72,7 +72,7 @@ public class TxHandler {
         double in = 0;
         for (Transaction.Input input : tx.getInputs()) {
             UTXO utxo = new UTXO(input.prevTxHash, input.outputIndex);
-            in = in + this.utxoPool.getTxOutput(utxo).value;
+            in = in + pool.getTxOutput(utxo).value;
         }
 
         double out = 0;
@@ -93,105 +93,7 @@ public class TxHandler {
         return total;
     }
 
-	/* Returns true if 
-	 * (1) all outputs claimed by tx are in the current UTXO pool, 
-	 * (2) the signatures on each input of tx are valid, 
-	 * (3) no UTXO is claimed multiple times by tx, 
-	 * (4) all of tx’s output values are non-negative, and
-	 * (5) the sum of tx’s input values is greater than or equal to the sum of   
-	        its output values;
-	   and false otherwise.
-	 */
 
-	public boolean isValidTx(Transaction tx) {
-		double outSum = 0.0;
-		double inSum = 0.0;
-		int index = 0;
-		byte[] hash = tx.getHash();
-
-		//UTXOPool currPool = new UTXOPool();
-        ArrayList<UTXO> usedUTXO = new ArrayList<UTXO>();
-
-        /* Check the inputs to the transaction for validity */
-		ArrayList<Transaction.Input> inputArray = tx.getInputs();
-		for (Transaction.Input in : inputArray) {
-
-			UTXO current = new UTXO(in.prevTxHash, in.outputIndex);
-
-			// Checks condition (1): all outputs claimed by tx are in the current UTXO pool
-			if (!pool.contains(current))
-				return false;			
-           
-            if (usedUTXO.contains(current))
-                return false;
-
-            usedUTXO.add(current);
-
-			// sum inputs
-			Transaction.Output found = pool.getTxOutput(current);
-            
-            if (found == null)
-                return false;
-
-            if (found.value < 0)
-                return false;
-
-			inSum += found.value;
-            
-            // Check that the transaction is signed properly 
-            byte[] msg = tx.getRawDataToSign(index);
-            if (msg == null)
-                return false;
-
-            byte[] sig = in.signature;
-            if (sig == null)
-                return false;
-
-            if (!found.address.verifySignature(msg, sig))
-                return false;
-
-            /*
-
-			// Checks condition (2): the signatures on each input of tx are valid
-			//get the message and the signature and then verify it
-            
-            // TODO: this is a stopgap for figuring out why
-            // we keep getting out of bounds errors
-            //if (in.outputIndex > inputArray.size())
-            //    return false;
-			byte[] msg = tx.getRawDataToSign(index);
-
-            if (msg == null)
-                return false;
-
-            byte[] sig = in.signature;
-			if (!found.address.verifySignature(msg, sig)) {
-				return false;
-			}
-            */
-
-            index++;
-
-		}
-
-		ArrayList<Transaction.Output> outputArray = tx.getOutputs();
-        for (Transaction.Output out : outputArray) {
-			// Checks condition (4): all the txns outputs are non-negative
-			if (out.value < 0) {
-				return false;
-			}
-			outSum += out.value;
-
-			index++;
-		}
-
-		// Checks condition (5): the sum of tx’s input values is 
-		// greater than or equal to the sum of its output values
-		if (! (inSum >= outSum)) 
-			return false;
-
-		return true;
-	}
 
 	private void updateUTXO(Transaction tx) {
 		byte[] hash = tx.getHash();
@@ -208,7 +110,7 @@ public class TxHandler {
 		int i = 0;
 		for (Transaction.Output out : outputArray) {
 			UTXO toAdd = new UTXO(hash, i);
-			pool.removeUTXO(toAdd);
+			pool.addUTXO(toAdd, out);
 			i++;
 		}	
 	}
@@ -380,4 +282,42 @@ public class TxHandler {
         }
     }
 
+    // find if the txSet is valid
+    public boolean checkIfValid(HashSet<Transaction> txSet) {
+        UTXOPool poolCopy = new UTXOPool(pool);
+        UTXOPool newUTXO = new UTXOPool();
+        for (Transaction tx : txSet) {
+            if (!hasValidOutputs(tx)) {
+                return false;
+            }
+
+            byte[] hash = tx.getHash();
+            ArrayList<Transaction.Output> outputArray = tx.getOutputs();
+            int i = 0;
+            for (Transaction.Output out : outputArray) {
+                UTXO toAdd = new UTXO(hash, i);
+                newUTXO.addUTXO(toAdd, out);
+                i++;
+            }
+        }
+
+        for (Transaction tx : txSet) {
+            for (int i = 0; i < tx.numInputs(); i++) {
+                Transaction.Input input = tx.getInput(i);
+                UTXO utxo = new UTXO(input.prevTxHash, input.outputIndex);
+                boolean pool = poolCopy.contains(utxo); 
+                boolean inNew = newUTXO.contains(utxo);
+                if (!pool && !inNew) {
+                    return false;
+                }
+                else if (pool) {
+                    poolCopy.removeUTXO(utxo);
+                }
+                else {
+                    newUTXO.removeUTXO(utxo);
+                }
+            }
+        }
+        return true;
+    }
 } 
